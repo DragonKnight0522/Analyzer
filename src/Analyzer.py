@@ -20,7 +20,8 @@ class Analyzer:
                 location_id = location[0]
                 embedding = self.ai_model.generate_embedding(location)
                 self.ai_model.store_embedding(embedding)
+                self.ai_model.get_chain()
                 criteria = self.ai_model.extract_criteria()
-                self.db_manager.store_criteria(location_id, criteria)
+                # self.db_manager.store_criteria(location_id, criteria)
             except Exception as e:
                 print(f'Error processing location {location_id}: {e}')

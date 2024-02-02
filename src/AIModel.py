@@ -2,36 +2,38 @@ import os
 import torch
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from sentence_transformers import SentenceTransformer
-from langchain.embeddings import SentenceTransformerEmbeddings
+from langchain_community.embeddings import SentenceTransformerEmbeddings
 from pinecone import Pinecone
-from langchain.vectorstores import Pinecone as LLMPinecone
-from langchain.chat_models import ChatOpenAI
-from langchain.chains import ConversationChain
-from langchain.prompts import (
-    SystemMessagePromptTemplate,
-    HumanMessagePromptTemplate,
-    ChatPromptTemplate,
-    MessagesPlaceholder
-)
+from langchain_community.vectorstores.pinecone import Pinecone as LLMPinecone
+from langchain_openai import ChatOpenAI
 
+from langchain.chains import ConversationalRetrievalChain
+from langchain.prompts import PromptTemplate
+from langchain.prompts.chat import SystemMessagePromptTemplate
+
+from langchain_core.prompts import ChatPromptTemplate
+from langchain.schema import StrOutputParser
+from langchain_core.runnables import RunnablePassthrough
 
 class AIModel:
     def __init__(self):
-        index_name = os.environ.get("PINECONE_INDEX_NAME")
-        self.txt_splitter = RecursiveCharacterTextSplitter(chunk_size=os.environ.get("TEXT_SPLITTER_CHUNK_SIZE"), chunk_overlap=os.environ.get("TEXT_SPLITTER_CHUNK_OVERLAP"))
+        self.txt_splitter = RecursiveCharacterTextSplitter(chunk_size=int(os.environ.get("TEXT_SPLITTER_CHUNK_SIZE")), chunk_overlap=int(os.environ.get("TEXT_SPLITTER_CHUNK_OVERLAP")))
         device = torch.device("cuda:0") if torch.cuda.is_available() else torch.device("cpu")
         self.model = SentenceTransformer(os.environ.get("EMBEDDING_MODEL"), device=device)
-        self.embeddings = SentenceTransformerEmbeddings(model_name=os.environ.get("TEXT_SPLITTER_CHUNK_SIZE"))
-        self.docsearch = Pinecone.from_existing_index(index_name, self.embeddings)
 
         pc = Pinecone(api_key=os.environ.get("PINECONE_API_KEY"))
-        self.index = pc.Index(index_name)
+        self.index = pc.Index(os.environ.get("PINECONE_INDEX_NAME"))
 
-        llm = ChatOpenAI(model_name=os.environ["OPENAI_API_MODEL"], openai_api_key=os.environ["OPENAI_API_KEY"])
-        system_msg_template = SystemMessagePromptTemplate.from_template(template="""Answer the question as truthfully as possible using the provided context, and if the answer is not contained within the text below, say 'I don't know'""")
-        human_msg_template = HumanMessagePromptTemplate.from_template(template="{input}")
-        prompt_template = ChatPromptTemplate.from_messages([system_msg_template, MessagesPlaceholder(variable_name="history"), human_msg_template])
-        self.extracter = ConversationChain(prompt=prompt_template, llm=llm, verbose=True)
+        self.chain = None
+        self.llm = ChatOpenAI(model_name=os.environ["OPENAI_API_MODEL"], openai_api_key=os.environ["OPENAI_API_KEY"])
+        template = """Answer the question based only on the following context:
+
+        {context}
+
+        Question: {question}
+        """
+        self.prompt = ChatPromptTemplate.from_template(template)
+        # self.prompt_template = PromptTemplate(input_variables=["context", "question"], template=template)
 
     def generate_embedding(self, info):
         _, yelp_feature, yelp_amenities, yelp_about, yelp_menu, yelp_name, yelp_reviews = info
@@ -56,22 +58,31 @@ class AIModel:
 
     def store_embedding(self, embedding):
         try:
-            index_stats_response = self.index.describe_index_stats()
-            print(index_stats_response)
             self.index.upsert(vectors=embedding)
-            index_stats_response = self.index.describe_index_stats()
-            print(index_stats_response)
+            # index_stats_response = self.index.describe_index_stats()
+            # print(index_stats_response)
             print('Embedding for location stored in Pinecone.')
         except Exception as e:
             print(f'Error storing embedding in Pinecone: {e}')
             raise e
 
-    def extract_criteria(self, ):
+    def get_chain(self):
+        embeddings = SentenceTransformerEmbeddings(model_name=os.environ.get("EMBEDDING_MODEL"))
+        pc = LLMPinecone.from_existing_index(os.environ.get("PINECONE_INDEX_NAME"), embeddings)
+        retriever = pc.as_retriever()
+        # self.chain = ConversationalRetrievalChain.from_llm(self.llm, retriever=retriever, verbose=True)
+        # self.chain.combine_docs_chain.llm_chain.prompt.messages[0] = SystemMessagePromptTemplate(prompt=self.prompt_template)
+        self.chain = (
+            {"context": retriever, "question": RunnablePassthrough()}
+            | self.prompt
+            | self.llm
+            | StrOutputParser()
+        )
+        
+    def extract_criteria(self):
         try:
-            conversation_string = get_conversation_string()
-            refined_query = query_refiner(conversation_string, query)
-            context = find_match(refined_query)
-            response = self.extracter.predict(input=f"Context:\n {context} \n\n Query:\n{query}")
+            # response = self.chain.run({"context": "extract data", "chat_history" : "", "question": "give me bar type of this location"})
+            response = self.chain.invoke("What is the name of the location?")
             
             print(f'Criteria extracted for location: {response}')
             return response

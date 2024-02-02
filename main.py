@@ -1,6 +1,5 @@
 from src.Analyzer import Analyzer
 from dotenv import load_dotenv
-
 load_dotenv()
 
 # Instantiate the Analyzer class
@@ -11,3 +10,4 @@ locations = analyzer.load_data()
 
 # Analyze locations
 analyzer.analyze_locations(locations)
+# analyzer.analyze_locations1(locations)

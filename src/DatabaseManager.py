@@ -27,7 +27,7 @@ class DatabaseManager:
             cursor.execute(
                 """
                 SELECT location_id, yelp_feature, yelp_amenities, yelp_about, yelp_menu, yelp_name, yelp_reviews 
-                FROM scrap LIMIT 2
+                FROM scrap LIMIT 1
                 """
             )
             try:
