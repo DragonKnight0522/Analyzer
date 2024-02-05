@@ -115,7 +115,6 @@ class AIModel:
         ]
         chunked_data = []
         for text in texts:
-            print(text)
             chunked_data.extend(self.txt_splitter.split_text(text))
 
         embeddings = self.model.encode(chunked_data, convert_to_tensor=True)
