@@ -26,8 +26,12 @@ class DatabaseManager:
         with self.connection.cursor() as cursor:
             cursor.execute(
                 """
-                SELECT location_id, yelp_feature, yelp_amenities, yelp_about, yelp_menu, yelp_name, yelp_reviews 
-                FROM scrap LIMIT 1
+                    SELECT locations.id, yelp_feature, yelp_amenities, yelp_about, yelp_menu, yelp_name, yelp_reviews, crawl.data
+                    FROM locations 
+                    LEFT JOIN scrap ON scrap.location_id = locations.id
+                    LEFT JOIN crawl ON crawl.location_id = locations.id
+                    WHERE is_analyzed IS NOT TRUE AND (scrap.location_id IS NOT NULL OR crawl.location_id IS NOT NULL)
+                    LIMIT 1;
                 """
             )
             try:
